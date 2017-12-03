@@ -1,0 +1,95 @@
+#!/bin/bash
+
+#
+# This script converts Magic Lantern RAW Video (MLV) into
+# MPEG4 (MP4) video that can be played by most video players.
+#
+# Simply provide a MLV file name in the arguments. This script
+# can process multiple files per instance.
+#
+# Dependencies: mlv_dump, dcraw, ffmpeg.
+#
+
+# MARK: User-Defined Variables
+
+# The framerate at which the MP4 should play at. Default is 24.
+FRAMERATE='24'
+
+# The framesize of the resulting MP4 video. Default is 1824x684.
+# It is recommended you change this to the appropriate size as recorded by the camera.
+FRAMESIZE='1824x684'
+
+# MARK: Check For Dependencies
+if [ -z $(which mlv_dump) ]; then
+	echo "missing mlv_dump dependency"
+	exit 1
+elif [ -z $(which dcraw) ]; then
+	echo "missing dcraw dependency"
+	exit 2
+elif [ -z $(which ffmpeg) ]; then
+	echo "missing ffmpeg dependency"
+	exit 3
+fi
+
+# MARK: Trap Declaration
+# this function will run just before the script exits
+function janitor {
+	echo "cleaning up"
+	cd ..
+	rm -r .$$
+}
+trap janitor SIGSTOP SIGKILL SIGINT
+
+# MARK: Argument Processing
+# Check if files were provided
+if [ -z "$1" ]; then echo "no files were provided for conversion, please specify at least one MLV file to convert."; exit 4; fi
+
+# Check if all the files provided exist
+for file in $@; do if [ ! -f "$file" ]; then echo "$file does not exist"; exit 5; fi; done
+
+if [ -z "$FRAMERATE" ]; then FRAMERATE='24';
+elif [ -z "$FRAMESIZE" ]; then FRAMESIZE='1824x684'; fi
+
+# MARK: Main Loop
+for file in $@; do
+
+	echo "processing $file"
+	
+	# Create a temporary directory to house the intermediary files
+	mkdir ".$$"
+
+	# Check that the previous command succeeded
+	if [ $? -ne 0 ]; then echo "could not write files"; continue; fi
+
+	# Enter the temporary directory
+	cd .$$
+
+	echo "temporary directory $PWD"
+
+	# Dump all the DNGs from the MLV file into the temporary directory
+	echo "dumping DNGs"
+	mlv_dump --dng --show-progress -o "" "../$file"
+
+	# Check that the previous command succeeded
+	if [ $? -ne 0 ]; then echo "could not dump DNGs"; janitor; continue; fi
+
+	# Convert the DNGs to PPMs using dcraw
+	echo "converting DNGs"
+	dcraw -v -g 2.222 4.5 *.dng 2>&1 >/dev/null | grep 'ppm'
+
+	# Check that the previous command succeeded
+	if [ $? -ne 0 ]; then echo "could not convert DNGs"; janitor; continue; fi
+	
+	# FFMpeg the files together into one nice video
+	echo "stitching into MP4"
+	ffmpeg -r "$FRAMERATE" -start_number 000 -i '%*.ppm' -s "$FRAMESIZE" -vcodec libx264 -pix_fmt yuv420p ../$(echo $file | cut -f1 -d'.').mp4
+
+	# Check that the previous command succeeded
+	if [ $? -ne 0 ]; then echo "could not stitch into MP4"; janitor; continue; fi
+
+	# Clean up
+	janitor
+
+done
+
+echo "done"
