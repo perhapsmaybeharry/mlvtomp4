@@ -44,6 +44,7 @@ The associated MP4 files will be placed next to the existing MLV file after the 
 ### User-defined Variables
 
 `FRAMERATE`: The framerate at which the MP4 should play at. Default is 24.
+
 `FRAMESIZE`: The framesize of the resulting MP4 video. Default is 1824x684. **It is recommended you change this to the appropriate size as recorded by the camera.**
 
 ### Advanced Users
