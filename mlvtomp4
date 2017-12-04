@@ -12,12 +12,15 @@
 
 # MARK: User-Defined Variables
 
-# The framerate at which the MP4 should play at. Default is 24.
+# The framerate at which the MP4 should play at. Default is '24'.
 FRAMERATE='24'
 
-# The framesize of the resulting MP4 video. Default is 1824x684.
+# The framesize of the resulting MP4 video. Default is '1824x684'.
 # It is recommended you change this to the appropriate size as recorded by the camera.
 FRAMESIZE='1824x684'
+
+# Whether to keep or delete the intemediary DNGs and PPM files. Default is 'true'.
+KEEPINTERMEDIARY='true'
 
 # MARK: Check For Dependencies
 if [ -z $(which mlv_dump) ]; then
@@ -36,7 +39,7 @@ fi
 function janitor {
 	echo "cleaning up"
 	cd ..
-	rm -r .$$
+	if [ "$KEEPINTERMEDIARY" == 'false' ]; then rm -r .$$; fi
 }
 trap janitor SIGSTOP SIGKILL SIGINT
 
