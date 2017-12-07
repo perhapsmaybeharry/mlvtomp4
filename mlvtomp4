@@ -12,15 +12,21 @@
 
 # MARK: User-Defined Variables
 
+# The codec for ffmpeg to convert to. Default is 'libx264'.
+CODEC='prores'
+
 # The framerate at which the MP4 should play at. Default is '24'.
 FRAMERATE='24'
 
 # The framesize of the resulting MP4 video. Default is '1824x684'.
 # It is recommended you change this to the appropriate size as recorded by the camera.
-FRAMESIZE='1824x684'
+# FRAMESIZE='1824x684'
+# Deprecated: if you want to modify the frame size, add '-s 1824x684', where 1824x684
+# is the framesize you wish for. The script now uses the maximum possible size of the
+# input images for its output framesize.
 
 # Whether to keep or delete the intemediary DNGs and PPM files. Default is 'true'.
-KEEPINTERMEDIARY='true'
+KEEPINTERMEDIARY='false'
 
 # MARK: Check For Dependencies
 if [ -z $(which mlv_dump) ]; then
@@ -36,7 +42,7 @@ fi
 
 # MARK: Trap Declaration
 # this function will run just before the script exits
-function janitor {
+function janitor {	
 	echo "cleaning up"
 	cd ..
 	if [ "$KEEPINTERMEDIARY" == 'false' ]; then rm -r .$$; fi
@@ -59,7 +65,7 @@ for file in $@; do
 	echo "processing $file"
 	
 	# Create a temporary directory to house the intermediary files
-	mkdir ".$$"
+	mkdir -p ".$$"
 
 	# Check that the previous command succeeded
 	if [ $? -ne 0 ]; then echo "could not write files"; continue; fi
@@ -84,11 +90,11 @@ for file in $@; do
 	if [ $? -ne 0 ]; then echo "could not convert DNGs"; janitor; continue; fi
 	
 	# FFMpeg the files together into one nice video
-	echo "stitching into MP4"
-	ffmpeg -r "$FRAMERATE" -start_number 000 -i '%*.ppm' -s "$FRAMESIZE" -vcodec libx264 -pix_fmt yuv420p ../$(echo $file | cut -f1 -d'.').mp4
+	echo "stitching into MP4"	
+	ffmpeg -r "$FRAMERATE" -start_number 000 -i '%*.ppm' -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -crf 16 -pix_fmt yuv420p ../$(echo $file | cut -f1 -d'.').mp4
 
-	# Check that the previous command succeeded
-	if [ $? -ne 0 ]; then echo "could not stitch into MP4"; janitor; continue; fi
+	# Check that the previous command succeeded (this one doesn't have janitor just in case you want to reencode again manually without having to wait so long)
+	if [ $? -ne 0 ]; then echo "could not stitch into MP4"; continue; fi
 
 	# Clean up
 	janitor
