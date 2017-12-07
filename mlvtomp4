@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# MARK: Colorization
+CLEAR='\033[0m'
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+
 #
 # This script converts Magic Lantern RAW Video (MLV) into
 # MPEG4 (MP4) video that can be played by most video players.
@@ -12,20 +17,14 @@
 
 # MARK: User-Defined Variables
 
-# The codec for ffmpeg to convert to. Default is 'libx264'.
-CODEC='prores'
+# The codec for ffmpeg to convert to. Default is 'libx264 -crf 16'.
+# You can also add other codec-related options here such as -crf 16 for libx264 or -profile:v 3 for prores_ks.
+CODEC='prores_ks -profile:v 2'
 
 # The framerate at which the MP4 should play at. Default is '24'.
 FRAMERATE='24'
 
-# The framesize of the resulting MP4 video. Default is '1824x684'.
-# It is recommended you change this to the appropriate size as recorded by the camera.
-# FRAMESIZE='1824x684'
-# Deprecated: if you want to modify the frame size, add '-s 1824x684', where 1824x684
-# is the framesize you wish for. The script now uses the maximum possible size of the
-# input images for its output framesize.
-
-# Whether to keep or delete the intemediary DNGs and PPM files. Default is 'true'.
+# Whether or not to keep intermediary DNGs
 KEEPINTERMEDIARY='false'
 
 # MARK: Check For Dependencies
@@ -45,16 +44,24 @@ fi
 function janitor {	
 	echo "cleaning up"
 	cd ..
-	if [ "$KEEPINTERMEDIARY" == 'false' ]; then rm -r .$$; fi
+	if [ "$KEEPINTERMEDIARY" == 'false' ]; then rm -r .$$;
+	else mv .$$ "$$-$1"; fi
 }
-trap janitor SIGSTOP SIGKILL SIGINT
+function emergency {
+	janitor
+	exit 128
+}
+trap emergency SIGSTOP SIGKILL SIGINT
+
+# MARK: Error Tracking
+FILEERRORS=''
 
 # MARK: Argument Processing
 # Check if files were provided
 if [ -z "$1" ]; then echo "no files were provided for conversion, please specify at least one MLV file to convert."; exit 4; fi
 
 # Check if all the files provided exist
-for file in $@; do if [ ! -f "$file" ]; then echo "$file does not exist"; exit 5; fi; done
+for file in $@; do if [ ! -f "$file" ]; then echo -e "${RED}$file does not exist${CLEAR}"; exit 5; fi; done
 
 if [ -z "$FRAMERATE" ]; then FRAMERATE='24';
 elif [ -z "$FRAMESIZE" ]; then FRAMESIZE='1824x684'; fi
@@ -62,13 +69,13 @@ elif [ -z "$FRAMESIZE" ]; then FRAMESIZE='1824x684'; fi
 # MARK: Main Loop
 for file in $@; do
 
-	echo "processing $file"
+	echo -e "\n${GREEN}processing $file${CLEAR}"
 	
-	# Create a temporary directory to house the intermediary files
+	# Create temporary directory
 	mkdir -p ".$$"
 
 	# Check that the previous command succeeded
-	if [ $? -ne 0 ]; then echo "could not write files"; continue; fi
+	if [ $? -ne 0 ]; then echo -e "${RED}could not write files${CLEAR}"; exit 6; fi
 
 	# Enter the temporary directory
 	cd .$$
@@ -77,28 +84,35 @@ for file in $@; do
 
 	# Dump all the DNGs from the MLV file into the temporary directory
 	echo "dumping DNGs"
-	mlv_dump --dng --show-progress -o "" "../$file"
+	DUMP_OUTPUT=`mlv_dump --dng --show-progress -o "" "../$file"`
 
-	# Check that the previous command succeeded
-	if [ $? -ne 0 ]; then echo "could not dump DNGs"; janitor; continue; fi
+	# Check that the previous command succeeded (sometimes, there can be an MLV file that produces no DNG files, requiring the second check)
+	if [ $? -ne 0 ] || [ $(echo $DUMP_OUTPUT | grep nan | wc -l) -gt 0 ]; then
+		echo -e "${RED}could not dump DNGs${CLEAR}"
+		FILEERRORS="$FILEERRORS $file (DNG dump error)"
+		janitor
+		continue
+	fi
 
-	# Convert the DNGs to PPMs using dcraw
-	echo "converting DNGs"
-	dcraw -v -g 2.222 4.5 *.dng 2>&1 >/dev/null | grep 'ppm'
+	if [ -f ".wav" ]; then
+		echo "identified audio file"
+		AUDIOFILE="-i .wav "
+	fi
 
-	# Check that the previous command succeeded
-	if [ $? -ne 0 ]; then echo "could not convert DNGs"; janitor; continue; fi
-	
-	# FFMpeg the files together into one nice video
-	echo "stitching into MP4"	
-	ffmpeg -r "$FRAMERATE" -start_number 000 -i '%*.ppm' -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -crf 16 -pix_fmt yuv420p ../$(echo $file | cut -f1 -d'.').mp4
+	dcraw +M -W -q 3 -6 -c -g 2.222 4.5 *.dng | ffmpeg -y -probesize 10M $AUDIOFILE-f image2pipe -r "$FRAMERATE" -i pipe:0 -c:v copy -c:a aac -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -pix_fmt yuv422p10le ../$(echo $file | cut -f1 -d'.').mp4
 
 	# Check that the previous command succeeded (this one doesn't have janitor just in case you want to reencode again manually without having to wait so long)
-	if [ $? -ne 0 ]; then echo "could not stitch into MP4"; continue; fi
+	if [ $? -ne 0 ]; then
+		echo -e "${RED}could not convert or stitch into MP4${CLEAR}"
+		FILEERRORS="$FILEERRORS $file (FFmpeg error)"
+		janitor
+		continue
+	fi
 
 	# Clean up
-	janitor
+	janitor $file
 
 done
 
-echo "done"
+if [ ! -z "$FILEERRORS" ]; then echo -e "${RED}errors were encountered with the following files:${CLEAR} $FILEERRORS"; fi
+echo -e "done\n"
