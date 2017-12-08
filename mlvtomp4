@@ -64,7 +64,6 @@ if [ -z "$1" ]; then echo "no files were provided for conversion, please specify
 for file in $@; do if [ ! -f "$file" ]; then echo -e "${RED}$file does not exist${CLEAR}"; exit 5; fi; done
 
 if [ -z "$FRAMERATE" ]; then FRAMERATE='24';
-elif [ -z "$FRAMESIZE" ]; then FRAMESIZE='1824x684'; fi
 
 PROCESSED=1
 
@@ -74,7 +73,7 @@ for file in $@; do
 	echo -e "\n${GREEN}processing $file ($PROCESSED/$#)${CLEAR}"
 
 	# Switch to the parent directory of the file
-	cd "$(dirname "$file")"
+	cd "$(dirname $(readlink -f relative/path/to/file))"
 	
 	# Create temporary directory
 	mkdir -p ".$$"
@@ -104,7 +103,9 @@ for file in $@; do
 		AUDIOFILE="-i .wav "
 	fi
 
-	dcraw +M -W -q 3 -6 -c -g 2.222 4.5 *.dng | ffmpeg -y -probesize 10M $AUDIOFILE-f image2pipe -r "$FRAMERATE" -i pipe:0 -c:v copy -c:a aac -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -pix_fmt yuv422p10le ../$(echo $file | cut -f1 -d'.').mp4
+	# Convert the DNGs to PPMs with dcraw (options to: use embedded color matrix, don't automatically brighten, interpolation quality 3, write 16-bit, write to stdout, gamma curve 2.222 4.5)
+	# FFmpeg takes data from pipe and muxes into MP4 (options to: overwrite, probesize 10M, input audiofile, filter image2pipe, stitch at framerate, input stream from pipe0, copy video codec, audio codec to aac, scale to ensure framesize fits even dimensions, set video codec, set pixel format, output to mp4 with the same name as $file in the parent directory) 
+	dcraw +M -W -q 3 -6 -c -g 2.222 4.5 *.dng | ffmpeg -y -probesize 10M $AUDIOFILE-f image2pipe -r "$FRAMERATE" -i pipe:0 -c:a aac -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -pix_fmt yuv422p10le ../$(echo $file | cut -f1 -d'.').mp4
 
 	# Check that the previous command succeeded (this one doesn't have janitor just in case you want to reencode again manually without having to wait so long)
 	if [ $? -ne 0 ]; then
