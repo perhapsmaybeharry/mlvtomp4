@@ -66,10 +66,15 @@ for file in $@; do if [ ! -f "$file" ]; then echo -e "${RED}$file does not exist
 if [ -z "$FRAMERATE" ]; then FRAMERATE='24';
 elif [ -z "$FRAMESIZE" ]; then FRAMESIZE='1824x684'; fi
 
+PROCESSED=1
+
 # MARK: Main Loop
 for file in $@; do
 
-	echo -e "\n${GREEN}processing $file${CLEAR}"
+	echo -e "\n${GREEN}processing $file ($PROCESSED/$#)${CLEAR}"
+
+	# Switch to the parent directory of the file
+	cd "$(dirname "$file")"
 	
 	# Create temporary directory
 	mkdir -p ".$$"
@@ -95,7 +100,7 @@ for file in $@; do
 	fi
 
 	if [ -f ".wav" ]; then
-		echo "identified audio file"
+		echo "identified associated audio file"
 		AUDIOFILE="-i .wav "
 	fi
 
@@ -111,6 +116,8 @@ for file in $@; do
 
 	# Clean up
 	janitor $file
+
+	PROCESSED=$PROCESSED+1
 
 done
 
