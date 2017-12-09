@@ -22,7 +22,7 @@ GREEN='\033[1;32m'
 CODEC='prores_ks -profile:v 2'
 
 # The framerate at which the MP4 should play at. Default is '24'.
-FRAMERATE='24'
+FRAMERATE='23.976'
 
 # Whether or not to keep intermediary DNGs
 KEEPINTERMEDIARY='false'
@@ -73,7 +73,7 @@ for file in $@; do
 	echo -e "\n${GREEN}processing $file ($PROCESSED/$#)${CLEAR}"
 
 	# Switch to the parent directory of the file
-	cd "$(dirname $(readlink -f relative/path/to/file))"
+	cd "$(cd "$(dirname "$file")"; pwd)"
 	
 	# Create temporary directory
 	mkdir -p ".$$"
