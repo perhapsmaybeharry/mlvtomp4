@@ -65,15 +65,19 @@ for file in $@; do if [ ! -f "$file" ]; then echo -e "${RED}$file does not exist
 
 if [ -z "$FRAMERATE" ]; then FRAMERATE='24'; fi
 
-PROCESSED=1
+PROCESSED=0
 
 # MARK: Main Loop
 for file in $@; do
 
+	PROCESSED=$((PROCESSED+1))
+
 	echo -e "\n${GREEN}processing $file ($PROCESSED/$#)${CLEAR}"
 
 	# Switch to the parent directory of the file
-	cd "$(cd "$(dirname "$file")"; pwd)"
+	INDIR="$(cd "$(dirname "$file")"; pwd)"
+	cd "$INDIR"
+	echo "in directory $INDIR"
 	
 	# Create temporary directory
 	mkdir -p ".$$"
@@ -86,6 +90,8 @@ for file in $@; do
 
 	echo "temporary directory $PWD"
 
+	file="$(basename $file)"
+	
 	# Dump all the DNGs from the MLV file into the temporary directory
 	echo "dumping DNGs"
 	DUMP_OUTPUT=`mlv_dump --dng --show-progress -o "" "../$file"`
@@ -117,8 +123,6 @@ for file in $@; do
 
 	# Clean up
 	janitor $file
-
-	PROCESSED=$PROCESSED+1
 
 done
 
