@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -i
 
 # MARK: Colorization
 CLEAR='\033[0m'
@@ -25,7 +25,7 @@ CODEC='prores_ks -profile:v 2'
 FRAMERATE='23.976'
 
 # Whether or not to keep intermediary DNGs
-KEEPINTERMEDIARY='false'
+KEEPINTERMEDIARY='true'
 
 # MARK: Check For Dependencies
 if [ -z $(which mlv_dump) ]; then
@@ -94,24 +94,34 @@ for file in $@; do
 	
 	# Dump all the DNGs from the MLV file into the temporary directory
 	echo "dumping DNGs"
-	DUMP_OUTPUT=`mlv_dump --dng --show-progress -o "" "../$file"`
+	mlv_dump --dng --show-progress -o "" "../$file"
 
 	# Check that the previous command succeeded (sometimes, there can be an MLV file that produces no DNG files, requiring the second check)
-	if [ $? -ne 0 ] || [ $(echo $DUMP_OUTPUT | grep nan | wc -l) -gt 0 ]; then
+	if [ $? -ne 0 ]; then
 		echo -e "${RED}could not dump DNGs${CLEAR}"
 		FILEERRORS="$FILEERRORS $file (DNG dump error)"
 		janitor
 		continue
-	fi
-
-	if [ -f ".wav" ]; then
-		echo "identified associated audio file"
-		AUDIOFILE="-i .wav "
+	elif [ $(ls | grep -i "dng" | wc -l) -eq 0 ]; then
+		echo -e "${RED}empty MLV, no DNGs to dump${CLEAR}"
+                FILEERRORS="$FILEERRORS $file (empty MLV)"
+                janitor
+                continue
 	fi
 
 	# Convert the DNGs to PPMs with dcraw (options to: use embedded color matrix, don't automatically brighten, interpolation quality 3, write 16-bit, write to stdout, gamma curve 2.222 4.5)
 	# FFmpeg takes data from pipe and muxes into MP4 (options to: overwrite, probesize 10M, input audiofile, filter image2pipe, stitch at framerate, input stream from pipe0, copy video codec, audio codec to aac, scale to ensure framesize fits even dimensions, set video codec, set pixel format, output to mp4 with the same name as the input file in the parent directory) 
-	dcraw +M -W -q 3 -6 -c -g 2.222 4.5 *.dng | ffmpeg -y -probesize 10M $AUDIOFILE-f image2pipe -r "$FRAMERATE" -i pipe:0 -c:a aac -vf scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -pix_fmt yuv422p10le ../$(echo $file | cut -f1 -d'.').mp4
+	dcraw -c +M -W -g 2.222 4.5 -q 3 -6 *.dng | ffmpeg -y -f image2pipe -r $FRAMERATE -vcodec ppm -i pipe:0 -vf yadif=parity=auto,scale="iw:trunc(ow/a/2)*2" -vcodec $CODEC -pix_fmt yuv422p10le noaudio.mp4
+
+	if [ -f ".wav" ]; then
+		echo "identified associated audio file"
+		
+		# muxing audio separately was added due to some complications (blue lines appearing in some frames on video) seemingly caused
+		#   by simultaneously muxing audio in the same command as muxing video.
+		ffmpeg -y -i noaudio.mp4 -i .wav -c:a aac -c:v copy ../$(echo $file | cut -f1 -d'.').mp4
+	else
+		mv noaudio.mp4 ../$(echo $file | cut -f1 -d'.').mp4
+	fi
 
 	# Check that the previous command succeeded (this one doesn't have janitor just in case you want to reencode again manually without having to wait so long)
 	if [ $? -ne 0 ]; then
@@ -122,7 +132,7 @@ for file in $@; do
 	fi
 
 	# Clean up
-	janitor $file
+	janitor "$file"
 
 done
 
